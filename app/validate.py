@@ -5,12 +5,15 @@ the size forces: records are checked one at a time instead of being loaded into
 a list first. ~1M records will not fit in a runner's memory otherwise.
 
 Run with: python -m app.validate
+     or: python -m app.validate --changed-since <sha>   (PRs: changed records only)
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -51,12 +54,17 @@ def _check(rel: str, rec: dict[str, Any], errors: list[str]) -> None:
             errors.append(f"{rel}: {field} {value!r} outside {low}-{high}")
 
 
-def validate(data_dir: Path = DATA) -> list[str]:
+def validate(data_dir: Path = DATA, paths: list[Path] | None = None) -> list[str]:
+    """Check every record, or only `paths` when given.
+
+    A scoped run still catches duplicate slugs: the bucket check pins each slug
+    to exactly one path, so a duplicate would have to overwrite that file.
+    """
     errors: list[str] = []
     seen: dict[str, str] = {}
     count = 0
 
-    for path in sorted(data_dir.rglob("*.json")):
+    for path in sorted(data_dir.rglob("*.json")) if paths is None else sorted(paths):
         rel = path.relative_to(data_dir.parent).as_posix()
         count += 1
         try:
@@ -78,18 +86,36 @@ def validate(data_dir: Path = DATA) -> list[str]:
                 seen[slug] = rel
             if path.stem != slug:
                 errors.append(f"{rel}: filename does not match slug '{slug}'")
+            if path.parent.name != slug[:2]:
+                errors.append(f"{rel}: bucket must be '{slug[:2]}' (first two slug characters)")
 
         if len(errors) >= MAX_ERRORS:
             errors.append(f"... stopped after {MAX_ERRORS} errors")
             break
 
-    if count == 0:
+    if count == 0 and paths is None:
         errors.append(f"no game records found under {data_dir}")
     return errors
 
 
+def changed_records(base: str) -> list[Path]:
+    """Records added or modified since `base` (deletions need no checking)."""
+    out = subprocess.run(
+        ["git", "diff", "--name-only", "--diff-filter=AMR", f"{base}...HEAD", "--", "data/game"],
+        cwd=ROOT, check=True, capture_output=True, text=True,
+    ).stdout
+    return [ROOT / line for line in out.splitlines() if line.endswith(".json")]
+
+
 def main() -> int:
-    errors = validate()
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--changed-since", metavar="SHA", help="validate only records changed since SHA")
+    args = parser.parse_args()
+
+    paths = changed_records(args.changed_since) if args.changed_since else None
+    if paths is not None:
+        print(f"validating {len(paths)} changed record(s)")
+    errors = validate(paths=paths)
     for error in errors:
         print(error)
     if errors:

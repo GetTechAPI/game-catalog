@@ -66,3 +66,18 @@ def test_duplicate_slug(tmp_path):
     other.mkdir(parents=True, exist_ok=True)
     (other / "the-witcher-3-wild-hunt.json").write_text(json.dumps(GOOD), encoding="utf-8")
     assert any("duplicate slug" in e for e in validate(data))
+
+
+def test_wrong_bucket(tmp_path):
+    data = tmp_path / "game" / "zz"
+    data.mkdir(parents=True)
+    (data / "the-witcher-3-wild-hunt.json").write_text(json.dumps(GOOD), encoding="utf-8")
+    assert any("bucket" in e for e in validate(tmp_path / "game"))
+
+
+def test_scoped_run_checks_only_given_paths(tmp_path):
+    data = _write(tmp_path, GOOD)
+    _write(tmp_path, {**GOOD, "slug": "the-bad-one", "rating": 9})
+    good = data / "th" / "the-witcher-3-wild-hunt.json"
+    assert validate(data, paths=[good]) == []
+    assert validate(data, paths=[]) == []
