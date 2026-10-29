@@ -37,9 +37,14 @@ follow TechEngine's game model: `release_date`, `rating` (0-5), `rating_count`,
 ## Self-check
 
 ```bash
-python -m app.validate
+python -m app.validate                      # every record (~2h on Windows)
+python -m app.validate --changed-since develop   # only records your branch touched
 python -m pytest -q
 ```
+
+CI runs the scoped check on pull requests and the full check on pushes to
+`develop` and `main`. Workflows use `GITHUB_TOKEN` only — no personal access
+tokens, bot accounts, schedules or writes back to any repository.
 
 ## Site
 
