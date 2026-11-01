@@ -46,6 +46,16 @@ CI runs the scoped check on pull requests and the full check on pushes to
 `develop` and `main`. Workflows use `GITHUB_TOKEN` only — no personal access
 tokens, bot accounts, schedules or writes back to any repository.
 
+## Final check
+
+A maintainer adds the `final-check` label to an important PR. The
+`final-check` workflow runs the whole-catalog validator, the tests and the
+site build on the PR merged into its base. **TechEngineBot** then leaves one
+comment with the verdict, and adding the label again edits that comment.
+Only the comment job sees `TECHENGINEBOT_TOKEN`, a fine-grained TechEngineBot
+token with Pull requests: read and write. Without it, the verdict appears
+only in the job summary.
+
 ## Site
 
 `python site/build.py` writes two files that the TechAPI homepage reads so the
