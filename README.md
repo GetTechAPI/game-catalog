@@ -21,13 +21,22 @@ Hardware stays in TechAPI; games live here.
 Games are unscored and are not part of the verification layer — they were not
 in TechEngine's scoring or verify categories before the split either.
 
+The records moved out of TechAPI on 2026-09-17. TechAPI keeps a pointer to this
+repository at `site/public/v1/games/index.json`, and its site reads this
+repository's `summary.json` for the game count.
+
 ## Layout
 
-```
-data/game/<bucket>/<slug>.json   # bucket = first two slug characters
-app/validate.py                  # schema / slug / range checks
-site/build.py                    # summary.json + history.json for the site
-```
+| Path | What it is |
+|---|---|
+| `data/game/<bucket>/<slug>.json` | One record per file; the bucket is the first two characters of the slug |
+| `app/validate.py` | Validator: required fields, slug, filename and bucket, duplicate slugs, date and rating ranges |
+| `site/build.py` | Writes `site/summary.json` and `site/history.json` (generated, not committed) |
+| `site/index.html` | The Pages landing page; shows the count from `summary.json` |
+| `tests/` | pytest tests for the validator |
+| `.github/workflows/validate-data.yml` | Validator and tests on pull requests and on pushes to `develop` and `main` |
+| `.github/workflows/final-check.yml` | Label-triggered full check of a pull request (see [Final check](#final-check)) |
+| `.github/workflows/deploy-pages.yml` | Builds `site/` and deploys it to GitHub Pages on pushes to `main` |
 
 A record needs `slug`, `name`, `source_urls` and `verified`. Optional fields
 follow TechEngine's game model: `release_date`, `rating` (0-5), `rating_count`,
@@ -37,14 +46,19 @@ follow TechEngine's game model: `release_date`, `rating` (0-5), `rating_count`,
 ## Self-check
 
 ```bash
-python -m app.validate                      # every record (~2h on Windows)
+python -m app.validate                           # every record
 python -m app.validate --changed-since develop   # only records your branch touched
 python -m pytest -q
 ```
 
+The validator reads records one at a time, so the full run fits in a runner's
+memory; on a CI runner it took 3 minutes for 962,384 records on 2026-10-31.
+
 CI runs the scoped check on pull requests and the full check on pushes to
-`develop` and `main`. Workflows use `GITHUB_TOKEN` only — no personal access
-tokens, bot accounts, schedules or writes back to any repository.
+`develop` and `main`. `validate-data` and `deploy-pages` use `GITHUB_TOKEN`
+only. No workflow runs on a schedule, opens pull requests or issues, or pushes
+to a repository. The one other secret is `TECHENGINEBOT_TOKEN`, which only the
+comment job of the final check sees.
 
 ## Final check
 
@@ -54,15 +68,17 @@ site build on the PR merged into its base. **TechEngineBot** then leaves one
 comment with the verdict, and adding the label again edits that comment.
 Only the comment job sees `TECHENGINEBOT_TOKEN`, a fine-grained TechEngineBot
 token with Pull requests: read and write. Without it, the verdict appears
-only in the job summary.
+only in the job summary. Pull requests from forks never get a comment.
 
 ## Site
 
-`python site/build.py` writes two files that the TechAPI homepage reads so the
-count still appears there:
+`python site/build.py` writes two files into `site/`. They are not committed;
+`deploy-pages` rebuilds and publishes them on every push to `main`. The TechAPI
+site reads `summary.json`, so the count still appears there:
 
 - `summary.json` — `{"count": N, "generated_at": "..."}`
-- `history.json` — `{"points": [{"sha", "date", "count"}]}`, one point per data commit
+- `history.json` — `{"points": [{"sha", "date", "count"}]}`, one point per
+  commit that added or removed records
 
 There is no `catalog.json` listing every record, and the page does not render
 one: a million rows cannot be fetched or drawn in a browser.
